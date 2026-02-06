@@ -177,6 +177,26 @@ button:disabled {
     color: var(--muted);
 }
 
+.footer {
+    padding: 2rem 0 0.6rem;
+}
+
+.footer a {
+    color: var(--muted);
+    text-decoration-color: color-mix(in srgb, var(--muted) 40%, transparent);
+    text-underline-offset: 0.2em;
+}
+
+.footer a:hover {
+    color: var(--text);
+}
+
+.footer a:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: 0 0 0 4px var(--ring);
+    border-radius: 6px;
+}
+
 @media (max-width: 880px) {
     .controls {
         grid-template-columns: 1fr;
