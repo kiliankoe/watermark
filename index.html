@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Watermark</title>
+        <link rel="stylesheet" href="./styles.css" />
+    </head>
+    <body>
+        <main class="app">
+            <header class="header">
+                <h1>Watermark</h1>
+                <p>
+                    Add a text watermark to sensitive photos (ID scans, ...)
+                    before sharing. No data leaves your device.
+                </p>
+            </header>
+
+            <section class="controls" aria-label="Watermark controls">
+                <div class="field">
+                    <label for="imageInput">Choose image</label>
+                    <input id="imageInput" type="file" accept="image/*" />
+                </div>
+
+                <div class="field">
+                    <label for="watermarkInput">Watermark text</label>
+                    <input
+                        id="watermarkInput"
+                        type="text"
+                        placeholder="e.g. For Acme Bank KYC only - 2026-02-06"
+                        autocomplete="off"
+                    />
+                </div>
+
+                <button id="downloadBtn" type="button" disabled>
+                    Download
+                </button>
+            </section>
+
+            <p id="status" class="status" role="status" aria-live="polite"></p>
+            <p id="error" class="error" role="alert" hidden></p>
+
+            <section
+                class="preview-card"
+                aria-label="Watermarked image preview"
+            >
+                <div class="preview-shell" id="previewShell">
+                    <canvas id="previewCanvas"></canvas>
+                    <p id="previewHint">
+                        Choose an image to preview your watermark.
+                    </p>
+                </div>
+            </section>
+        </main>
+
+        <script src="./app.js" defer></script>
+    </body>
+</html>
