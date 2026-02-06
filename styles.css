@@ -278,6 +278,29 @@ button:disabled {
     opacity: 0.55;
 }
 
+.footer button.is-loading,
+.footer button.is-loading:disabled {
+    opacity: 1;
+    position: relative;
+    color: transparent;
+    cursor: wait;
+}
+
+.footer button.is-loading::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1rem;
+    height: 1rem;
+    margin-left: -0.5rem;
+    margin-top: -0.5rem;
+    border: 2px solid var(--accent-contrast);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
 .status,
 .error {
     margin: 0;
@@ -292,6 +315,40 @@ button:disabled {
 
 .status {
     color: var(--muted);
+}
+
+.video-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.video-progress[hidden] {
+    display: none !important;
+}
+
+.video-progress-track {
+    flex: 1 1 auto;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border) 80%, transparent);
+    overflow: hidden;
+}
+
+.video-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: inherit;
+    transition: width 120ms linear;
+}
+
+.video-progress span {
+    min-width: 2.5rem;
+    text-align: right;
+    color: var(--muted);
+    font-size: 0.83rem;
+    font-variant-numeric: tabular-nums;
 }
 
 .error {
@@ -318,7 +375,11 @@ button:disabled {
         background-color 120ms ease;
 }
 
-.preview-shell.has-image {
+.preview-shell.has-media {
+    cursor: default;
+}
+
+.preview-shell.is-redaction-mode {
     cursor: crosshair;
     touch-action: none;
     overscroll-behavior: contain;
@@ -338,6 +399,10 @@ button:disabled {
     height: auto;
     display: none;
     border-radius: 8px;
+    touch-action: manipulation;
+}
+
+.preview-shell.is-redaction-mode #previewCanvas {
     touch-action: none;
 }
 
@@ -418,5 +483,11 @@ button:disabled {
 
     .preview-card {
         padding: 0.6rem;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
     }
 }

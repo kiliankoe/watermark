@@ -7,6 +7,7 @@ const MIN_WATERMARK_ALPHA = 0.04;
 const MAX_WATERMARK_ALPHA = 0.5;
 const MIN_WATERMARK_ANGLE = -60;
 const MAX_WATERMARK_ANGLE = 60;
+const VIDEO_EXPORT_FPS = 30;
 
 const elements = {
   imageInput: document.getElementById("imageInput"),
@@ -22,14 +23,20 @@ const elements = {
   previewCanvas: document.getElementById("previewCanvas"),
   previewShell: document.getElementById("previewShell"),
   previewHint: document.getElementById("previewHint"),
+  redactionHint: document.getElementById("redactionHint"),
   redactionActions: document.getElementById("redactionActions"),
+  videoProgress: document.getElementById("videoProgress"),
+  videoProgressFill: document.getElementById("videoProgressFill"),
+  videoProgressText: document.getElementById("videoProgressText"),
   status: document.getElementById("status"),
   error: document.getElementById("error"),
 };
 
 const state = {
   file: null,
+  mediaType: null,
   imageBitmapOrImg: null,
+  videoEl: null,
   inputMime: "",
   baseName: "",
   watermarkText: "",
@@ -39,11 +46,13 @@ const state = {
   objectUrl: null,
   redactions: [],
   draftRedaction: null,
+  isVideoExporting: false,
 };
 
 let resizeRaf = null;
+let videoPreviewRaf = null;
 
-elements.imageInput.addEventListener("change", onImageSelected);
+elements.imageInput.addEventListener("change", onFileSelected);
 elements.watermarkInput.addEventListener("input", () => {
   state.watermarkText = elements.watermarkInput.value;
   clearError();
@@ -56,7 +65,7 @@ elements.angleInput.addEventListener("input", onAngleChange);
 elements.downloadBtn.addEventListener("click", downloadResult);
 elements.undoBtn.addEventListener("click", undoLastRedaction);
 elements.resetBtn.addEventListener("click", resetAllRedactions);
-setupImageDropzone();
+setupFileDropzone();
 setupRedactionDrawing();
 window.addEventListener("resize", () => {
   if (resizeRaf) {
@@ -70,19 +79,20 @@ window.addEventListener("resize", () => {
 
 updateDownloadButtonState();
 updateRedactionButtonsState();
+updateRedactionHint();
 syncWatermarkControls();
 
-function setupImageDropzone() {
+function setupFileDropzone() {
   elements.previewShell.addEventListener("click", () => {
-    if (state.imageBitmapOrImg) {
+    if (state.mediaType === "image") {
       return;
     }
     clearError();
-    openImagePicker();
+    openFilePicker();
   });
 
   elements.previewShell.addEventListener("keydown", (event) => {
-    if (state.imageBitmapOrImg) {
+    if (state.mediaType === "image") {
       return;
     }
     if (event.key !== "Enter" && event.key !== " ") {
@@ -90,7 +100,7 @@ function setupImageDropzone() {
     }
     event.preventDefault();
     clearError();
-    openImagePicker();
+    openFilePicker();
   });
 
   elements.previewShell.addEventListener("dragover", (event) => {
@@ -128,7 +138,7 @@ function setupRedactionDrawing() {
   );
 }
 
-function openImagePicker() {
+function openFilePicker() {
   elements.imageInput.value = "";
   elements.imageInput.click();
 }
@@ -214,7 +224,11 @@ function updateAngleLabel() {
 }
 
 function startRedactionDraft(event) {
-  if (!state.imageBitmapOrImg || event.button !== 0) {
+  if (
+    state.mediaType !== "image" ||
+    !state.imageBitmapOrImg ||
+    event.button !== 0
+  ) {
     return;
   }
 
@@ -237,7 +251,7 @@ function startRedactionDraft(event) {
 }
 
 function updateRedactionDraft(event) {
-  if (!state.draftRedaction) {
+  if (!state.draftRedaction || state.mediaType !== "image") {
     return;
   }
 
@@ -253,7 +267,7 @@ function updateRedactionDraft(event) {
 }
 
 function finishRedactionDraft(event) {
-  if (!state.draftRedaction) {
+  if (!state.draftRedaction || state.mediaType !== "image") {
     return;
   }
 
@@ -281,7 +295,7 @@ function finishRedactionDraft(event) {
 }
 
 function cancelRedactionDraft(event) {
-  if (!state.draftRedaction) {
+  if (!state.draftRedaction || state.mediaType !== "image") {
     return;
   }
 
@@ -308,7 +322,7 @@ function pointerToCanvas(event) {
   return { normalizedX: x, normalizedY: y };
 }
 
-async function onImageSelected(event) {
+async function onFileSelected(event) {
   const [file] = event.target.files || [];
   await handleSelectedFile(file);
 }
@@ -316,53 +330,61 @@ async function onImageSelected(event) {
 async function handleSelectedFile(file) {
   clearStatus();
   clearError();
+  hideVideoProgress();
+  setVideoExportLoading(false);
 
   if (!file) {
     return;
   }
 
   try {
-    setStatus("Loading image...");
-    await loadImage(file);
-    setStatus(
-      `Loaded ${state.baseName} (${state.imageBitmapOrImg.naturalWidth}x${state.imageBitmapOrImg.naturalHeight}). Drag on the image to add redaction boxes.`,
-    );
+    setStatus("Loading file...");
+    await loadMedia(file);
+
+    if (state.mediaType === "video") {
+      setStatus(
+        `Loaded ${state.baseName} (${state.videoEl.videoWidth}x${state.videoEl.videoHeight}). Video redaction is disabled; watermark is supported.`,
+      );
+    } else {
+      setStatus(
+        `Loaded ${state.baseName} (${state.imageBitmapOrImg.naturalWidth}x${state.imageBitmapOrImg.naturalHeight}). Drag on the image to add redaction boxes.`,
+      );
+    }
+
     renderPreview();
+    if (state.mediaType === "video") {
+      startVideoPreviewLoop();
+    }
   } catch (error) {
-    resetImageState();
+    resetMediaState();
     renderPreview();
-    setError(error.message || "Could not decode that image.");
+    setError(error.message || "Could not decode that file.");
   } finally {
     updateDownloadButtonState();
     updateRedactionButtonsState();
+    updateRedactionHint();
   }
 }
 
-function resetImageState() {
-  if (state.objectUrl) {
-    URL.revokeObjectURL(state.objectUrl);
-    state.objectUrl = null;
+async function loadMedia(file) {
+  if (
+    !file.type ||
+    (!file.type.startsWith("image/") && !file.type.startsWith("video/"))
+  ) {
+    throw new Error("Please select an image or video file.");
   }
-  state.file = null;
-  state.imageBitmapOrImg = null;
-  state.inputMime = "";
-  state.baseName = "";
-  state.previewScale = 1;
-  state.redactions = [];
-  state.draftRedaction = null;
-  elements.previewShell.classList.remove("is-drawing");
+
+  resetMediaState();
+
+  if (file.type.startsWith("image/")) {
+    await loadImageFile(file);
+    return;
+  }
+
+  await loadVideoFile(file);
 }
 
-async function loadImage(file) {
-  if (!file.type || !file.type.startsWith("image/")) {
-    throw new Error("Please select a supported image file.");
-  }
-
-  if (state.objectUrl) {
-    URL.revokeObjectURL(state.objectUrl);
-    state.objectUrl = null;
-  }
-
+async function loadImageFile(file) {
   const objectUrl = URL.createObjectURL(file);
   const img = new Image();
 
@@ -383,34 +405,151 @@ async function loadImage(file) {
   }
 
   state.file = file;
+  state.mediaType = "image";
   state.imageBitmapOrImg = img;
   state.inputMime = file.type.toLowerCase();
   state.baseName = makeBaseName(file.name);
   state.objectUrl = objectUrl;
-  state.redactions = [];
-  state.draftRedaction = null;
 }
 
-function renderPreview() {
-  const image = state.imageBitmapOrImg;
-  const canvas = elements.previewCanvas;
+async function loadVideoFile(file) {
+  const objectUrl = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.preload = "auto";
+  video.playsInline = true;
+  video.muted = true;
+  video.loop = true;
+  video.src = objectUrl;
 
-  if (!image) {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    canvas.style.display = "none";
-    elements.previewHint.hidden = false;
-    elements.previewShell.classList.remove("has-image");
-    elements.previewShell.classList.remove("is-drawing");
-    elements.previewShell.setAttribute(
-      "aria-label",
-      "Click to choose an image or drag and drop one here",
-    );
+  try {
+    await waitForEvent(video, "loadedmetadata");
+    await waitForEvent(video, "loadeddata");
+  } catch (error) {
+    URL.revokeObjectURL(objectUrl);
+    throw new Error("Unsupported video or failed decode.");
+  }
+
+  if (!video.videoWidth || !video.videoHeight) {
+    URL.revokeObjectURL(objectUrl);
+    throw new Error("Could not read video dimensions.");
+  }
+
+  state.file = file;
+  state.mediaType = "video";
+  state.videoEl = video;
+  state.inputMime = file.type.toLowerCase();
+  state.baseName = makeBaseName(file.name);
+  state.objectUrl = objectUrl;
+}
+
+function resetMediaState() {
+  stopVideoPreviewLoop();
+
+  if (state.videoEl) {
+    state.videoEl.pause();
+    state.videoEl.removeAttribute("src");
+    state.videoEl.load();
+  }
+
+  if (state.objectUrl) {
+    URL.revokeObjectURL(state.objectUrl);
+    state.objectUrl = null;
+  }
+
+  state.file = null;
+  state.mediaType = null;
+  state.imageBitmapOrImg = null;
+  state.videoEl = null;
+  state.inputMime = "";
+  state.baseName = "";
+  state.previewScale = 1;
+  state.redactions = [];
+  state.draftRedaction = null;
+  hideVideoProgress();
+  setVideoExportLoading(false);
+  elements.previewShell.classList.remove("is-drawing");
+}
+
+function stopVideoPreviewLoop() {
+  if (videoPreviewRaf) {
+    cancelAnimationFrame(videoPreviewRaf);
+    videoPreviewRaf = null;
+  }
+}
+
+function startVideoPreviewLoop() {
+  if (state.mediaType !== "video" || !state.videoEl) {
     return;
   }
 
-  const originalWidth = image.naturalWidth;
-  const originalHeight = image.naturalHeight;
+  stopVideoPreviewLoop();
+
+  state.videoEl.play().catch(() => {
+    // Autoplay can be blocked. We still render a static first frame.
+  });
+
+  const tick = () => {
+    if (state.mediaType !== "video") {
+      return;
+    }
+    drawVideoPreviewFrame();
+    videoPreviewRaf = requestAnimationFrame(tick);
+  };
+
+  tick();
+}
+
+function renderPreview() {
+  if (!state.mediaType) {
+    clearPreviewCanvas();
+    updateRedactionHint();
+    return;
+  }
+
+  if (state.mediaType === "video") {
+    layoutPreviewCanvas(state.videoEl.videoWidth, state.videoEl.videoHeight);
+    drawVideoPreviewFrame();
+    elements.previewShell.classList.add("has-media");
+    elements.previewShell.classList.remove("is-redaction-mode");
+    elements.previewShell.setAttribute(
+      "aria-label",
+      "Watermarked video preview. Drag and drop another file to replace it.",
+    );
+    updateRedactionHint();
+    return;
+  }
+
+  layoutPreviewCanvas(
+    state.imageBitmapOrImg.naturalWidth,
+    state.imageBitmapOrImg.naturalHeight,
+  );
+  drawImagePreviewFrame();
+  elements.previewShell.classList.add("has-media");
+  elements.previewShell.classList.add("is-redaction-mode");
+  elements.previewShell.setAttribute(
+    "aria-label",
+    "Image editor. Drag on the image to draw black redaction boxes.",
+  );
+  updateRedactionHint();
+}
+
+function clearPreviewCanvas() {
+  const canvas = elements.previewCanvas;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.style.display = "none";
+  elements.previewHint.hidden = false;
+  elements.previewShell.classList.remove("has-media");
+  elements.previewShell.classList.remove("is-redaction-mode");
+  elements.previewShell.classList.remove("is-drawing");
+  elements.previewShell.setAttribute(
+    "aria-label",
+    "Click to choose an image or video, or drag and drop one here",
+  );
+}
+
+function layoutPreviewCanvas(originalWidth, originalHeight) {
+  const canvas = elements.previewCanvas;
   const shellWidth = Math.max(240, elements.previewShell.clientWidth - 24);
   const shellHeight = Math.max(220, elements.previewShell.clientHeight - 24);
   const scale = Math.min(
@@ -436,68 +575,105 @@ function renderPreview() {
 
   canvas.style.width = `${cssWidth}px`;
   canvas.style.height = `${cssHeight}px`;
-  renderToCanvas(canvas, pixelWidth, pixelHeight, state.watermarkText, {
-    includeDraftRedaction: true,
-  });
   canvas.style.display = "block";
   elements.previewHint.hidden = true;
-  elements.previewShell.classList.add("has-image");
-  elements.previewShell.setAttribute(
-    "aria-label",
-    "Image editor. Drag on the image to draw black redaction boxes.",
+}
+
+function drawImagePreviewFrame() {
+  const canvas = elements.previewCanvas;
+  renderFrameToCanvas(
+    canvas,
+    canvas.width,
+    canvas.height,
+    state.imageBitmapOrImg,
+    state.watermarkText,
+    {
+      includePersistedRedactions: true,
+      includeDraftRedaction: true,
+    },
   );
 }
 
-function renderToCanvas(canvas, width, height, text, options = {}) {
-  const image = state.imageBitmapOrImg;
-  if (!image) {
+function drawVideoPreviewFrame() {
+  const canvas = elements.previewCanvas;
+  if (!canvas.width || !canvas.height || !state.videoEl) {
+    return;
+  }
+
+  renderFrameToCanvas(
+    canvas,
+    canvas.width,
+    canvas.height,
+    state.videoEl,
+    state.watermarkText,
+    {
+      includePersistedRedactions: false,
+      includeDraftRedaction: false,
+    },
+  );
+}
+
+function renderFrameToCanvas(
+  canvas,
+  width,
+  height,
+  source,
+  text,
+  options = {},
+) {
+  if (!source) {
     return;
   }
 
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, width, height);
-  ctx.drawImage(image, 0, 0, width, height);
-  drawPersistedRedactions(ctx, width, height);
+  ctx.drawImage(source, 0, 0, width, height);
 
-  const cleanedText = String(text || "").trim();
-  if (cleanedText) {
-    const diagonal = Math.hypot(width, height);
-
-    ctx.save();
-    ctx.translate(width / 2, height / 2);
-    ctx.rotate((state.watermarkAngleDeg * Math.PI) / 180);
-    ctx.fillStyle = `rgba(255, 255, 255, ${state.watermarkOpacity})`;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    const fontSize = computeDynamicWatermarkFontSize(
-      ctx,
-      cleanedText,
-      diagonal,
-    );
-    ctx.font = `900 ${fontSize}px "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif`;
-
-    const textWidth = Math.max(
-      ctx.measureText(cleanedText).width,
-      fontSize * 2.2,
-    );
-    const stepX = textWidth + fontSize * 0.85;
-    const stepY = fontSize * 1.35;
-    const coverage = diagonal * 2.2;
-
-    for (let y = -coverage; y <= coverage; y += stepY) {
-      const isOddRow = Math.floor((y + coverage) / stepY) % 2 !== 0;
-      const rowOffset = isOddRow ? stepX / 2 : 0;
-      for (let x = -coverage; x <= coverage; x += stepX) {
-        ctx.fillText(cleanedText, x + rowOffset, y);
-      }
-    }
-
-    ctx.restore();
+  if (options.includePersistedRedactions) {
+    drawPersistedRedactions(ctx, width, height);
   }
+
+  drawWatermarkLayer(ctx, width, height, text);
 
   if (options.includeDraftRedaction && state.draftRedaction) {
     drawDraftRedaction(ctx, width, height, state.draftRedaction);
   }
+}
+
+function drawWatermarkLayer(ctx, width, height, text) {
+  const cleanedText = String(text || "").trim();
+  if (!cleanedText) {
+    return;
+  }
+
+  const diagonal = Math.hypot(width, height);
+
+  ctx.save();
+  ctx.translate(width / 2, height / 2);
+  ctx.rotate((state.watermarkAngleDeg * Math.PI) / 180);
+  ctx.fillStyle = `rgba(255, 255, 255, ${state.watermarkOpacity})`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const fontSize = computeDynamicWatermarkFontSize(ctx, cleanedText, diagonal);
+  ctx.font = `900 ${fontSize}px "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif`;
+
+  const textWidth = Math.max(
+    ctx.measureText(cleanedText).width,
+    fontSize * 2.2,
+  );
+  const stepX = textWidth + fontSize * 0.85;
+  const stepY = fontSize * 1.35;
+  const coverage = diagonal * 2.2;
+
+  for (let y = -coverage; y <= coverage; y += stepY) {
+    const isOddRow = Math.floor((y + coverage) / stepY) % 2 !== 0;
+    const rowOffset = isOddRow ? stepX / 2 : 0;
+    for (let x = -coverage; x <= coverage; x += stepX) {
+      ctx.fillText(cleanedText, x + rowOffset, y);
+    }
+  }
+
+  ctx.restore();
 }
 
 function drawPersistedRedactions(ctx, width, height) {
@@ -546,69 +722,214 @@ function normalizeRedactionRect(rectLike) {
 async function downloadResult() {
   clearError();
   clearStatus();
+  hideVideoProgress();
 
-  if (!state.imageBitmapOrImg || !state.file) {
-    setError("Choose or drop an image first.");
+  if (!state.mediaType || !state.file) {
+    setError("Choose or drop an image or video first.");
     return;
   }
 
   const cleanedText = state.watermarkText.trim();
+
+  if (state.mediaType === "video") {
+    if (!cleanedText) {
+      setError("Enter watermark text before exporting a video.");
+      return;
+    }
+
+    await exportVideoResult(cleanedText);
+    return;
+  }
+
   if (!cleanedText && state.redactions.length === 0) {
     setError("Enter watermark text or add at least one redaction box.");
     return;
   }
 
+  await exportImageResult(cleanedText);
+}
+
+async function exportImageResult(cleanedText) {
   try {
-    setStatus("Preparing download...");
+    setStatus("Preparing image download...");
     const outCanvas = document.createElement("canvas");
     outCanvas.width = state.imageBitmapOrImg.naturalWidth;
     outCanvas.height = state.imageBitmapOrImg.naturalHeight;
-    renderToCanvas(outCanvas, outCanvas.width, outCanvas.height, cleanedText);
 
-    const format = deriveExportFormat(state.inputMime);
+    renderFrameToCanvas(
+      outCanvas,
+      outCanvas.width,
+      outCanvas.height,
+      state.imageBitmapOrImg,
+      cleanedText,
+      { includePersistedRedactions: true, includeDraftRedaction: false },
+    );
+
+    const format = deriveImageExportFormat(state.inputMime);
     const blob = await canvasToBlob(outCanvas, format.mime, format.quality);
     if (!blob) {
       throw new Error("Could not export image in this browser.");
     }
 
     const downloadName = `${state.baseName || "image"}-watermarked.${format.ext}`;
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = downloadName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(downloadUrl);
+    triggerDownload(blob, downloadName);
     setStatus(`Downloaded ${downloadName}.`);
   } catch (error) {
-    setError(error.message || "Failed to create download.");
+    setError(error.message || "Failed to create image download.");
   }
 }
 
-function undoLastRedaction() {
-  if (!state.redactions.length) {
+async function exportVideoResult(cleanedText) {
+  if (typeof MediaRecorder === "undefined") {
+    setError("Video export is not supported in this browser.");
     return;
   }
-  state.redactions.pop();
-  renderPreview();
-  updateRedactionButtonsState();
-  updateDownloadButtonState();
-}
 
-function resetAllRedactions() {
-  if (!state.redactions.length && !state.draftRedaction) {
-    return;
+  let exportVideo = null;
+  let drawRaf = null;
+  let recorder = null;
+  let canvasStream = null;
+  let sourceStream = null;
+
+  setVideoExportLoading(true);
+  showVideoProgress();
+  updateVideoProgress(0);
+
+  try {
+    setStatus("Rendering watermarked video. This may take a moment...");
+
+    const format = deriveVideoExportFormat();
+    if (!format) {
+      throw new Error(
+        "No supported video export format was found in this browser.",
+      );
+    }
+
+    exportVideo = document.createElement("video");
+    exportVideo.preload = "auto";
+    exportVideo.playsInline = true;
+    exportVideo.muted = true;
+    exportVideo.loop = false;
+    exportVideo.src = state.objectUrl;
+
+    await waitForEvent(exportVideo, "loadedmetadata");
+    await waitForEvent(exportVideo, "loadeddata");
+
+    const outCanvas = document.createElement("canvas");
+    outCanvas.width = exportVideo.videoWidth;
+    outCanvas.height = exportVideo.videoHeight;
+
+    canvasStream = outCanvas.captureStream(VIDEO_EXPORT_FPS);
+
+    if (typeof exportVideo.captureStream === "function") {
+      sourceStream = exportVideo.captureStream();
+      const [audioTrack] = sourceStream.getAudioTracks();
+      if (audioTrack) {
+        canvasStream.addTrack(audioTrack);
+      }
+    }
+
+    recorder = createMediaRecorder(canvasStream, format.mime);
+    const { stopPromise } = trackRecorderChunks(recorder, format.mime);
+
+    renderFrameToCanvas(
+      outCanvas,
+      outCanvas.width,
+      outCanvas.height,
+      exportVideo,
+      cleanedText,
+      { includePersistedRedactions: false, includeDraftRedaction: false },
+    );
+
+    recorder.start(250);
+    await exportVideo.play();
+
+    const drawLoop = () => {
+      renderFrameToCanvas(
+        outCanvas,
+        outCanvas.width,
+        outCanvas.height,
+        exportVideo,
+        cleanedText,
+        { includePersistedRedactions: false, includeDraftRedaction: false },
+      );
+      const progress = estimateVideoProgress(exportVideo);
+      if (progress !== null) {
+        updateVideoProgress(Math.min(progress, 0.99));
+      }
+      if (!exportVideo.paused && !exportVideo.ended) {
+        drawRaf = requestAnimationFrame(drawLoop);
+      }
+    };
+
+    drawLoop();
+    await waitForVideoPlaybackCompletion(exportVideo);
+
+    if (drawRaf) {
+      cancelAnimationFrame(drawRaf);
+      drawRaf = null;
+    }
+
+    if (recorder.state !== "inactive") {
+      recorder.stop();
+    }
+
+    setStatus("Finalizing encoded video...");
+    const durationForTimeout = Number.isFinite(exportVideo.duration)
+      ? exportVideo.duration
+      : 6;
+    const finalizeTimeoutMs = Math.max(
+      8000,
+      Math.round(durationForTimeout * 2000) + 2000,
+    );
+
+    const blob = await withTimeout(
+      stopPromise,
+      finalizeTimeoutMs,
+      "Video encoding did not finish in time. Try a shorter clip or another browser.",
+    );
+    if (!blob) {
+      throw new Error("Could not encode video in this browser.");
+    }
+
+    updateVideoProgress(1);
+    const downloadName = `${state.baseName || "video"}-watermarked.${format.ext}`;
+    triggerDownload(blob, downloadName);
+    setStatus(`Downloaded ${downloadName}.`);
+  } catch (error) {
+    setError(error.message || "Failed to create video download.");
+  } finally {
+    if (drawRaf) {
+      cancelAnimationFrame(drawRaf);
+    }
+
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+
+    if (canvasStream) {
+      for (const track of canvasStream.getTracks()) {
+        track.stop();
+      }
+    }
+
+    if (sourceStream) {
+      for (const track of sourceStream.getTracks()) {
+        track.stop();
+      }
+    }
+
+    if (exportVideo) {
+      exportVideo.pause();
+      exportVideo.removeAttribute("src");
+      exportVideo.load();
+    }
+    hideVideoProgress();
+    setVideoExportLoading(false);
   }
-  state.redactions = [];
-  state.draftRedaction = null;
-  elements.previewShell.classList.remove("is-drawing");
-  renderPreview();
-  updateRedactionButtonsState();
-  updateDownloadButtonState();
 }
 
-function deriveExportFormat(inputMime) {
+function deriveImageExportFormat(inputMime) {
   const normalized = String(inputMime || "").toLowerCase();
 
   if (normalized === "image/jpeg" || normalized === "image/jpg") {
@@ -624,6 +945,210 @@ function deriveExportFormat(inputMime) {
   }
 
   return { mime: "image/png", ext: "png", quality: undefined };
+}
+
+function deriveVideoExportFormat() {
+  if (typeof MediaRecorder === "undefined") {
+    return null;
+  }
+
+  const candidates = [
+    { mime: "video/webm;codecs=vp9,opus", ext: "webm" },
+    { mime: "video/webm;codecs=vp8,opus", ext: "webm" },
+    { mime: "video/webm", ext: "webm" },
+    { mime: "video/mp4;codecs=avc1.42E01E,mp4a.40.2", ext: "mp4" },
+    { mime: "video/mp4", ext: "mp4" },
+  ];
+
+  if (typeof MediaRecorder.isTypeSupported !== "function") {
+    return candidates[0];
+  }
+
+  for (const candidate of candidates) {
+    if (MediaRecorder.isTypeSupported(candidate.mime)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function createMediaRecorder(stream, mimeType) {
+  try {
+    if (mimeType) {
+      return new MediaRecorder(stream, { mimeType });
+    }
+    return new MediaRecorder(stream);
+  } catch (_error) {
+    throw new Error("Video export is not supported in this browser.");
+  }
+}
+
+function trackRecorderChunks(recorder, fallbackMimeType) {
+  const chunks = [];
+
+  const stopPromise = new Promise((resolve, reject) => {
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data && event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    });
+
+    recorder.addEventListener("error", () => {
+      reject(new Error("Failed while recording the watermarked video."));
+    });
+
+    recorder.addEventListener("stop", () => {
+      if (!chunks.length) {
+        resolve(null);
+        return;
+      }
+
+      const mime = recorder.mimeType || fallbackMimeType || "video/webm";
+      resolve(new Blob(chunks, { type: mime }));
+    });
+  });
+
+  return { stopPromise };
+}
+
+function waitForVideoPlaybackCompletion(videoEl) {
+  return new Promise((resolve, reject) => {
+    if (videoEl.ended) {
+      resolve();
+      return;
+    }
+
+    const cleanup = () => {
+      videoEl.removeEventListener("ended", onEnded);
+      videoEl.removeEventListener("timeupdate", onTimeUpdate);
+      videoEl.removeEventListener("error", onError);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+
+    const onEnded = () => {
+      cleanup();
+      resolve();
+    };
+
+    const onTimeUpdate = () => {
+      if (!Number.isFinite(videoEl.duration) || videoEl.duration <= 0) {
+        return;
+      }
+      if (videoEl.currentTime >= videoEl.duration - 0.03) {
+        cleanup();
+        resolve();
+      }
+    };
+
+    const onError = () => {
+      cleanup();
+      reject(new Error("Video playback failed during export."));
+    };
+
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error("Video playback did not complete in time."));
+    }, 45000);
+
+    videoEl.addEventListener("ended", onEnded);
+    videoEl.addEventListener("timeupdate", onTimeUpdate);
+    videoEl.addEventListener("error", onError, { once: true });
+  });
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
+function waitForEvent(target, successEvent) {
+  return new Promise((resolve, reject) => {
+    if (successEvent === "loadedmetadata" && target.readyState >= 1) {
+      resolve();
+      return;
+    }
+    if (successEvent === "loadeddata" && target.readyState >= 2) {
+      resolve();
+      return;
+    }
+    if (successEvent === "ended" && target.ended) {
+      resolve();
+      return;
+    }
+
+    const handleSuccess = () => {
+      cleanup();
+      resolve();
+    };
+
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Media loading failed."));
+    };
+
+    const cleanup = () => {
+      target.removeEventListener(successEvent, handleSuccess);
+      target.removeEventListener("error", handleError);
+    };
+
+    target.addEventListener(successEvent, handleSuccess, { once: true });
+    target.addEventListener("error", handleError, { once: true });
+  });
+}
+
+function triggerDownload(blob, fileName) {
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(downloadUrl);
+}
+
+function undoLastRedaction() {
+  if (state.mediaType !== "image" || !state.redactions.length) {
+    return;
+  }
+  state.redactions.pop();
+  renderPreview();
+  updateRedactionButtonsState();
+  updateDownloadButtonState();
+}
+
+function resetAllRedactions() {
+  if (state.mediaType !== "image") {
+    return;
+  }
+
+  if (!state.redactions.length && !state.draftRedaction) {
+    return;
+  }
+
+  state.redactions = [];
+  state.draftRedaction = null;
+  elements.previewShell.classList.remove("is-drawing");
+  renderPreview();
+  updateRedactionButtonsState();
+  updateDownloadButtonState();
 }
 
 function canvasToBlob(canvas, mime, quality) {
@@ -647,9 +1172,9 @@ function supportsMimeType(mime) {
 function makeBaseName(fileName) {
   const trimmed = String(fileName || "").trim();
   if (!trimmed) {
-    return "image";
+    return "file";
   }
-  return trimmed.replace(/\.[^/.]+$/, "") || "image";
+  return trimmed.replace(/\.[^/.]+$/, "") || "file";
 }
 
 function formatLocalDate(date) {
@@ -665,24 +1190,90 @@ function paintSliderFill(input, value, min, max) {
   input.style.setProperty("--slider-progress", `${percent}%`);
 }
 
+function setVideoExportLoading(isLoading) {
+  state.isVideoExporting = isLoading;
+  elements.downloadBtn.classList.toggle("is-loading", isLoading);
+  elements.videoProgress.hidden = !isLoading;
+
+  if (isLoading) {
+    elements.downloadBtn.disabled = true;
+    elements.downloadBtn.setAttribute("aria-busy", "true");
+    return;
+  }
+
+  updateVideoProgress(0);
+  elements.downloadBtn.removeAttribute("aria-busy");
+  updateDownloadButtonState();
+}
+
+function showVideoProgress() {
+  if (!state.isVideoExporting) {
+    return;
+  }
+  elements.videoProgress.hidden = false;
+}
+
+function hideVideoProgress() {
+  elements.videoProgress.hidden = true;
+  updateVideoProgress(0);
+}
+
+function updateVideoProgress(progressRatio) {
+  const percent = clamp(Math.round(progressRatio * 100), 0, 100);
+  elements.videoProgressFill.style.width = `${percent}%`;
+  elements.videoProgressText.textContent = `${percent}%`;
+}
+
+function estimateVideoProgress(videoEl) {
+  const duration = videoEl.duration;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return null;
+  }
+  return clamp(videoEl.currentTime / duration, 0, 1);
+}
+
 function updateDownloadButtonState() {
-  const hasImage = Boolean(state.imageBitmapOrImg);
+  if (state.isVideoExporting) {
+    elements.downloadBtn.disabled = true;
+    return;
+  }
+
+  const hasMedia = Boolean(state.mediaType);
   const hasWatermark = state.watermarkText.trim().length > 0;
-  const hasRedactions = state.redactions.length > 0;
+  const hasImageRedactions =
+    state.mediaType === "image" && state.redactions.length > 0;
+
   elements.downloadBtn.disabled = !(
-    hasImage &&
-    (hasWatermark || hasRedactions)
+    hasMedia &&
+    (hasWatermark || hasImageRedactions)
   );
 }
 
 function updateRedactionButtonsState() {
-  const hasImage = Boolean(state.imageBitmapOrImg);
-  const hasBoxes = state.redactions.length > 0;
-  const isDrawing = Boolean(state.draftRedaction);
+  const hasImage = state.mediaType === "image";
+  const hasBoxes = hasImage && state.redactions.length > 0;
+  const isDrawing = hasImage && Boolean(state.draftRedaction);
 
   elements.undoBtn.disabled = !hasImage || !hasBoxes || isDrawing;
   elements.resetBtn.disabled = !hasImage || (!hasBoxes && !isDrawing);
   elements.redactionActions.hidden = !hasBoxes;
+}
+
+function updateRedactionHint() {
+  if (state.mediaType === "video") {
+    elements.redactionHint.textContent =
+      "Video mode: watermarking is supported. Redaction boxes are available for images only.";
+    return;
+  }
+
+  if (state.mediaType === "image") {
+    elements.redactionHint.textContent =
+      "After loading an image, drag on it to redact sensitive areas.";
+    return;
+  }
+
+  elements.redactionHint.textContent =
+    "After loading an image, drag on it to redact sensitive areas.";
 }
 
 function setStatus(message) {
@@ -708,7 +1299,6 @@ function computeDynamicWatermarkFontSize(ctx, text, diagonal) {
   const minSize = 22;
   const maxSize = Math.max(64, Math.round(diagonal / 4.5));
 
-  // Measure once at a stable probe size, then scale to a target coverage width.
   const probeSize = 100;
   ctx.font = `900 ${probeSize}px "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif`;
   const probeWidth = Math.max(1, ctx.measureText(text).width);

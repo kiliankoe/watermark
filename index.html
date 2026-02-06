@@ -26,7 +26,7 @@
                 id="imageInput"
                 class="visually-hidden"
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
             />
 
             <section class="controls" aria-label="Watermark controls">
@@ -92,11 +92,21 @@
             </section>
 
             <p id="status" class="status" role="status" aria-live="polite"></p>
+            <div id="videoProgress" class="video-progress" hidden>
+                <div class="video-progress-track" aria-hidden="true">
+                    <div
+                        id="videoProgressFill"
+                        class="video-progress-fill"
+                        style="width: 0%"
+                    ></div>
+                </div>
+                <span id="videoProgressText">0%</span>
+            </div>
             <p id="error" class="error" role="alert" hidden></p>
 
             <section
                 class="preview-card"
-                aria-label="Watermarked image preview"
+                aria-label="Watermarked media preview"
             >
                 <div
                     class="preview-shell"
@@ -107,7 +117,8 @@
                 >
                     <canvas id="previewCanvas"></canvas>
                     <p id="previewHint">
-                        Click to choose an image or drag and drop one here.
+                        Click to choose an image or video, or drag and drop one
+                        here.
                     </p>
                 </div>
                 <div class="preview-meta">
