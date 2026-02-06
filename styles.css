@@ -145,6 +145,10 @@ body {
     gap: 0.9rem;
 }
 
+.field-color {
+    grid-column: 1 / -1;
+}
+
 .advanced {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -203,6 +207,42 @@ input[type="text"] {
     border: 1px solid var(--border);
     color: var(--text);
     background: color-mix(in srgb, var(--bg-soft) 95%, transparent);
+}
+
+.color-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.color-picker-row span {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.color-input {
+    width: 2.4rem;
+    height: 1.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+    border: none;
+    border-radius: 5px;
+}
+
+.color-input::-moz-color-swatch {
+    border: none;
+    border-radius: 5px;
 }
 
 .slider {

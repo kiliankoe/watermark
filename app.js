@@ -3,6 +3,7 @@
 const IMAGE_QUALITY = 0.92;
 const DEFAULT_WATERMARK_ALPHA = 0.22;
 const DEFAULT_WATERMARK_ANGLE_DEG = -30;
+const DEFAULT_WATERMARK_COLOR = "#ffffff";
 const MIN_WATERMARK_ALPHA = 0.04;
 const MAX_WATERMARK_ALPHA = 0.5;
 const MIN_WATERMARK_ANGLE = -60;
@@ -15,8 +16,10 @@ const elements = {
   addDateBtn: document.getElementById("addDateBtn"),
   opacityInput: document.getElementById("opacityInput"),
   angleInput: document.getElementById("angleInput"),
+  colorInput: document.getElementById("colorInput"),
   opacityValue: document.getElementById("opacityValue"),
   angleValue: document.getElementById("angleValue"),
+  colorValue: document.getElementById("colorValue"),
   downloadBtn: document.getElementById("downloadBtn"),
   undoBtn: document.getElementById("undoBtn"),
   resetBtn: document.getElementById("resetBtn"),
@@ -42,6 +45,7 @@ const state = {
   watermarkText: "",
   watermarkOpacity: DEFAULT_WATERMARK_ALPHA,
   watermarkAngleDeg: DEFAULT_WATERMARK_ANGLE_DEG,
+  watermarkColor: DEFAULT_WATERMARK_COLOR,
   previewScale: 1,
   objectUrl: null,
   redactions: [],
@@ -62,6 +66,7 @@ elements.watermarkInput.addEventListener("input", () => {
 elements.addDateBtn.addEventListener("click", insertCurrentDate);
 elements.opacityInput.addEventListener("input", onOpacityChange);
 elements.angleInput.addEventListener("input", onAngleChange);
+elements.colorInput.addEventListener("input", onColorChange);
 elements.downloadBtn.addEventListener("click", downloadResult);
 elements.undoBtn.addEventListener("click", undoLastRedaction);
 elements.resetBtn.addEventListener("click", resetAllRedactions);
@@ -196,11 +201,21 @@ function onAngleChange() {
   renderPreview();
 }
 
+function onColorChange() {
+  const normalized = normalizeHexColor(elements.colorInput.value);
+  state.watermarkColor = normalized;
+  elements.colorInput.value = normalized;
+  updateColorLabel();
+  renderPreview();
+}
+
 function syncWatermarkControls() {
   elements.opacityInput.value = String(state.watermarkOpacity);
   elements.angleInput.value = String(state.watermarkAngleDeg);
+  elements.colorInput.value = state.watermarkColor;
   updateOpacityLabel();
   updateAngleLabel();
+  updateColorLabel();
   paintSliderFill(
     elements.opacityInput,
     state.watermarkOpacity,
@@ -221,6 +236,10 @@ function updateOpacityLabel() {
 
 function updateAngleLabel() {
   elements.angleValue.textContent = `${Math.round(state.watermarkAngleDeg)}°`;
+}
+
+function updateColorLabel() {
+  elements.colorValue.textContent = state.watermarkColor.toUpperCase();
 }
 
 function startRedactionDraft(event) {
@@ -651,7 +670,7 @@ function drawWatermarkLayer(ctx, width, height, text) {
   ctx.save();
   ctx.translate(width / 2, height / 2);
   ctx.rotate((state.watermarkAngleDeg * Math.PI) / 180);
-  ctx.fillStyle = `rgba(255, 255, 255, ${state.watermarkOpacity})`;
+  ctx.fillStyle = hexToRgba(state.watermarkColor, state.watermarkOpacity);
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const fontSize = computeDynamicWatermarkFontSize(ctx, cleanedText, diagonal);
@@ -1182,6 +1201,24 @@ function formatLocalDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function normalizeHexColor(value) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(raw)) {
+    return DEFAULT_WATERMARK_COLOR;
+  }
+  return raw;
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = normalizeHexColor(hex);
+  const r = parseInt(normalized.slice(1, 3), 16);
+  const g = parseInt(normalized.slice(3, 5), 16);
+  const b = parseInt(normalized.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function paintSliderFill(input, value, min, max) {
