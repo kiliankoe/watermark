@@ -72,6 +72,16 @@ body {
     color: var(--muted);
 }
 
+.header p a {
+    color: inherit;
+    text-decoration-color: color-mix(in srgb, var(--muted) 45%, transparent);
+    text-underline-offset: 0.2em;
+}
+
+.header p a:hover {
+    color: var(--text);
+}
+
 .controls,
 .preview-card {
     background: color-mix(in srgb, var(--bg-soft) 92%, transparent);
@@ -275,6 +285,11 @@ button:disabled {
     font-size: 0.9rem;
 }
 
+.status:empty,
+.error:empty {
+    display: none;
+}
+
 .status {
     color: var(--muted);
 }
@@ -366,29 +381,13 @@ button:disabled {
 .footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 0.8rem;
     padding: 0.1rem 0 0.4rem;
 }
 
-.footer a {
-    color: var(--muted);
-    text-decoration-color: color-mix(in srgb, var(--muted) 40%, transparent);
-    text-underline-offset: 0.2em;
-}
-
 .footer button {
     min-width: 10.5rem;
-}
-
-.footer a:hover {
-    color: var(--text);
-}
-
-.footer a:focus-visible {
-    outline: 2px solid transparent;
-    box-shadow: 0 0 0 4px var(--ring);
-    border-radius: 6px;
 }
 
 @media (max-width: 880px) {
@@ -407,5 +406,14 @@ button:disabled {
     .app {
         width: min(1120px, calc(100% - 1rem));
         margin: 1rem auto;
+        gap: 0.55rem;
+    }
+
+    .controls {
+        padding: 0.8rem;
+    }
+
+    .preview-card {
+        padding: 0.6rem;
     }
 }
