@@ -127,6 +127,20 @@ button {
     color: var(--accent-contrast);
 }
 
+.actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.button-secondary {
+    background: color-mix(in srgb, var(--bg-soft) 92%, transparent);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
 button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
@@ -165,6 +179,10 @@ button:disabled {
     transition:
         border-color 120ms ease,
         background-color 120ms ease;
+}
+
+.preview-shell.has-image {
+    cursor: crosshair;
 }
 
 .preview-shell:hover {

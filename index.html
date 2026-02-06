@@ -11,8 +11,8 @@
             <header class="header">
                 <h1>Watermark</h1>
                 <p>
-                    Add a text watermark to sensitive photos (ID scans, ...)
-                    before sharing. No data leaves your device.
+                    Add a text watermark or redact portions of sensitive photos
+                    (ID scans, ...) before sharing. No data leaves your device.
                 </p>
             </header>
 
@@ -34,9 +34,27 @@
                     />
                 </div>
 
-                <button id="downloadBtn" type="button" disabled>
-                    Download
-                </button>
+                <div class="actions">
+                    <button id="downloadBtn" type="button" disabled>
+                        Download
+                    </button>
+                    <button
+                        id="undoBtn"
+                        class="button-secondary"
+                        type="button"
+                        disabled
+                    >
+                        Undo box
+                    </button>
+                    <button
+                        id="resetBtn"
+                        class="button-secondary"
+                        type="button"
+                        disabled
+                    >
+                        Reset boxes
+                    </button>
+                </div>
             </section>
 
             <p id="status" class="status" role="status" aria-live="polite"></p>
