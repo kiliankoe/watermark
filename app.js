@@ -1,18 +1,28 @@
 "use strict";
 
 const IMAGE_QUALITY = 0.92;
-const WATERMARK_ALPHA = 0.22;
-const WATERMARK_ANGLE_DEG = -30;
+const DEFAULT_WATERMARK_ALPHA = 0.22;
+const DEFAULT_WATERMARK_ANGLE_DEG = -30;
+const MIN_WATERMARK_ALPHA = 0.04;
+const MAX_WATERMARK_ALPHA = 0.5;
+const MIN_WATERMARK_ANGLE = -60;
+const MAX_WATERMARK_ANGLE = 60;
 
 const elements = {
   imageInput: document.getElementById("imageInput"),
   watermarkInput: document.getElementById("watermarkInput"),
+  addDateBtn: document.getElementById("addDateBtn"),
+  opacityInput: document.getElementById("opacityInput"),
+  angleInput: document.getElementById("angleInput"),
+  opacityValue: document.getElementById("opacityValue"),
+  angleValue: document.getElementById("angleValue"),
   downloadBtn: document.getElementById("downloadBtn"),
   undoBtn: document.getElementById("undoBtn"),
   resetBtn: document.getElementById("resetBtn"),
   previewCanvas: document.getElementById("previewCanvas"),
   previewShell: document.getElementById("previewShell"),
   previewHint: document.getElementById("previewHint"),
+  redactionActions: document.getElementById("redactionActions"),
   status: document.getElementById("status"),
   error: document.getElementById("error"),
 };
@@ -23,6 +33,8 @@ const state = {
   inputMime: "",
   baseName: "",
   watermarkText: "",
+  watermarkOpacity: DEFAULT_WATERMARK_ALPHA,
+  watermarkAngleDeg: DEFAULT_WATERMARK_ANGLE_DEG,
   previewScale: 1,
   objectUrl: null,
   redactions: [],
@@ -38,6 +50,9 @@ elements.watermarkInput.addEventListener("input", () => {
   renderPreview();
   updateDownloadButtonState();
 });
+elements.addDateBtn.addEventListener("click", insertCurrentDate);
+elements.opacityInput.addEventListener("input", onOpacityChange);
+elements.angleInput.addEventListener("input", onAngleChange);
 elements.downloadBtn.addEventListener("click", downloadResult);
 elements.undoBtn.addEventListener("click", undoLastRedaction);
 elements.resetBtn.addEventListener("click", resetAllRedactions);
@@ -55,6 +70,7 @@ window.addEventListener("resize", () => {
 
 updateDownloadButtonState();
 updateRedactionButtonsState();
+syncWatermarkControls();
 
 function setupImageDropzone() {
   elements.previewShell.addEventListener("click", () => {
@@ -120,6 +136,81 @@ function openImagePicker() {
 function isFileDrag(event) {
   const types = event.dataTransfer?.types;
   return Boolean(types && Array.from(types).includes("Files"));
+}
+
+function insertCurrentDate() {
+  const today = formatLocalDate(new Date());
+  const currentText = elements.watermarkInput.value.trimEnd();
+  if (currentText.includes(today)) {
+    elements.watermarkInput.focus();
+    return;
+  }
+
+  const nextText = currentText ? `${currentText} ${today}` : today;
+  elements.watermarkInput.value = nextText;
+  elements.watermarkInput.dispatchEvent(new Event("input", { bubbles: true }));
+  elements.watermarkInput.focus();
+}
+
+function onOpacityChange() {
+  const parsed = Number(elements.opacityInput.value);
+  state.watermarkOpacity = clamp(
+    parsed,
+    MIN_WATERMARK_ALPHA,
+    MAX_WATERMARK_ALPHA,
+  );
+  updateOpacityLabel();
+  paintSliderFill(
+    elements.opacityInput,
+    state.watermarkOpacity,
+    MIN_WATERMARK_ALPHA,
+    MAX_WATERMARK_ALPHA,
+  );
+  renderPreview();
+}
+
+function onAngleChange() {
+  const parsed = Number(elements.angleInput.value);
+  state.watermarkAngleDeg = clamp(
+    parsed,
+    MIN_WATERMARK_ANGLE,
+    MAX_WATERMARK_ANGLE,
+  );
+  updateAngleLabel();
+  paintSliderFill(
+    elements.angleInput,
+    state.watermarkAngleDeg,
+    MIN_WATERMARK_ANGLE,
+    MAX_WATERMARK_ANGLE,
+  );
+  renderPreview();
+}
+
+function syncWatermarkControls() {
+  elements.opacityInput.value = String(state.watermarkOpacity);
+  elements.angleInput.value = String(state.watermarkAngleDeg);
+  updateOpacityLabel();
+  updateAngleLabel();
+  paintSliderFill(
+    elements.opacityInput,
+    state.watermarkOpacity,
+    MIN_WATERMARK_ALPHA,
+    MAX_WATERMARK_ALPHA,
+  );
+  paintSliderFill(
+    elements.angleInput,
+    state.watermarkAngleDeg,
+    MIN_WATERMARK_ANGLE,
+    MAX_WATERMARK_ANGLE,
+  );
+}
+
+function updateOpacityLabel() {
+  elements.opacityValue.textContent = `${Math.round(state.watermarkOpacity * 100)}%`;
+}
+
+function updateAngleLabel() {
+  elements.angleValue.textContent = `${Math.round(state.watermarkAngleDeg)}°`;
 }
 
 function startRedactionDraft(event) {
@@ -374,8 +465,8 @@ function renderToCanvas(canvas, width, height, text, options = {}) {
 
     ctx.save();
     ctx.translate(width / 2, height / 2);
-    ctx.rotate((WATERMARK_ANGLE_DEG * Math.PI) / 180);
-    ctx.fillStyle = `rgba(255, 255, 255, ${WATERMARK_ALPHA})`;
+    ctx.rotate((state.watermarkAngleDeg * Math.PI) / 180);
+    ctx.fillStyle = `rgba(255, 255, 255, ${state.watermarkOpacity})`;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     const fontSize = computeDynamicWatermarkFontSize(
@@ -561,11 +652,27 @@ function makeBaseName(fileName) {
   return trimmed.replace(/\.[^/.]+$/, "") || "image";
 }
 
+function formatLocalDate(date) {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function paintSliderFill(input, value, min, max) {
+  const ratio = (value - min) / (max - min);
+  const percent = clamp(Math.round(ratio * 100), 0, 100);
+  input.style.setProperty("--slider-progress", `${percent}%`);
+}
+
 function updateDownloadButtonState() {
   const hasImage = Boolean(state.imageBitmapOrImg);
   const hasWatermark = state.watermarkText.trim().length > 0;
   const hasRedactions = state.redactions.length > 0;
-  elements.downloadBtn.disabled = !(hasImage && (hasWatermark || hasRedactions));
+  elements.downloadBtn.disabled = !(
+    hasImage &&
+    (hasWatermark || hasRedactions)
+  );
 }
 
 function updateRedactionButtonsState() {
@@ -575,6 +682,7 @@ function updateRedactionButtonsState() {
 
   elements.undoBtn.disabled = !hasImage || !hasBoxes || isDrawing;
   elements.resetBtn.disabled = !hasImage || (!hasBoxes && !isDrawing);
+  elements.redactionActions.hidden = !hasBoxes;
 }
 
 function setStatus(message) {

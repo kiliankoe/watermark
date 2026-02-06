@@ -24,37 +24,65 @@
             />
 
             <section class="controls" aria-label="Watermark controls">
-                <div class="field">
+                <div class="field field-wide">
                     <label for="watermarkInput">Watermark text</label>
-                    <input
-                        id="watermarkInput"
-                        type="text"
-                        placeholder="e.g. For Acme Bank KYC only - 2026-02-06"
-                        autocomplete="off"
-                    />
+                    <div class="watermark-input-row">
+                        <input
+                            id="watermarkInput"
+                            type="text"
+                            placeholder="e.g. For Acme Bank KYC only - 2026-02-06"
+                            autocomplete="off"
+                        />
+                        <button
+                            id="addDateBtn"
+                            class="button-secondary button-compact"
+                            type="button"
+                        >
+                            Insert date
+                        </button>
+                    </div>
                 </div>
 
-                <div class="actions">
-                    <button id="downloadBtn" type="button" disabled>
-                        Download
-                    </button>
-                    <button
-                        id="undoBtn"
-                        class="button-secondary"
-                        type="button"
-                        disabled
-                    >
-                        Undo box
-                    </button>
-                    <button
-                        id="resetBtn"
-                        class="button-secondary"
-                        type="button"
-                        disabled
-                    >
-                        Reset boxes
-                    </button>
-                </div>
+                <details class="advanced">
+                    <summary>Advanced watermark options</summary>
+                    <div class="slider-grid">
+                        <div class="field field-range">
+                            <div class="label-row">
+                                <label for="opacityInput">Opacity</label>
+                                <span id="opacityValue" aria-live="polite"
+                                    >22%</span
+                                >
+                            </div>
+                            <input
+                                id="opacityInput"
+                                class="slider"
+                                type="range"
+                                min="0.04"
+                                max="0.5"
+                                step="0.01"
+                                value="0.22"
+                            />
+                        </div>
+
+                        <div class="field field-range">
+                            <div class="label-row">
+                                <label for="angleInput">Angle</label>
+                                <span id="angleValue" aria-live="polite"
+                                    >-30°</span
+                                >
+                            </div>
+                            <input
+                                id="angleInput"
+                                class="slider"
+                                type="range"
+                                min="-60"
+                                max="60"
+                                step="1"
+                                value="-30"
+                            />
+                        </div>
+                    </div>
+                </details>
             </section>
 
             <p id="status" class="status" role="status" aria-live="polite"></p>
@@ -76,6 +104,30 @@
                         Click to choose an image or drag and drop one here.
                     </p>
                 </div>
+                <div class="preview-meta">
+                    <p id="redactionHint" class="redaction-hint">
+                        After loading an image, drag on it to redact sensitive
+                        areas.
+                    </p>
+                    <div id="redactionActions" class="redaction-actions" hidden>
+                        <button
+                            id="undoBtn"
+                            class="button-secondary"
+                            type="button"
+                            disabled
+                        >
+                            Undo box
+                        </button>
+                        <button
+                            id="resetBtn"
+                            class="button-secondary"
+                            type="button"
+                            disabled
+                        >
+                            Reset boxes
+                        </button>
+                    </div>
+                </div>
             </section>
 
             <footer class="footer">
@@ -85,6 +137,9 @@
                     rel="noreferrer noopener"
                     >GitHub Repo</a
                 >
+                <button id="downloadBtn" type="button" disabled>
+                    Download
+                </button>
             </footer>
         </main>
 
