@@ -35,6 +35,7 @@ elements.watermarkInput.addEventListener("input", () => {
   updateDownloadButtonState();
 });
 elements.downloadBtn.addEventListener("click", downloadResult);
+setupImageDropzone();
 window.addEventListener("resize", () => {
   if (resizeRaf) {
     cancelAnimationFrame(resizeRaf);
@@ -47,15 +48,66 @@ window.addEventListener("resize", () => {
 
 updateDownloadButtonState();
 
+function setupImageDropzone() {
+  elements.previewShell.addEventListener("click", () => {
+    clearError();
+    openImagePicker();
+  });
+
+  elements.previewShell.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    clearError();
+    openImagePicker();
+  });
+
+  elements.previewShell.addEventListener("dragover", (event) => {
+    if (!isFileDrag(event)) {
+      return;
+    }
+    event.preventDefault();
+    elements.previewShell.classList.add("is-drop-target");
+  });
+
+  elements.previewShell.addEventListener("dragleave", (event) => {
+    if (!elements.previewShell.contains(event.relatedTarget)) {
+      elements.previewShell.classList.remove("is-drop-target");
+    }
+  });
+
+  elements.previewShell.addEventListener("drop", (event) => {
+    if (!isFileDrag(event)) {
+      return;
+    }
+    event.preventDefault();
+    elements.previewShell.classList.remove("is-drop-target");
+    const [file] = event.dataTransfer.files || [];
+    void handleSelectedFile(file);
+  });
+}
+
+function openImagePicker() {
+  elements.imageInput.value = "";
+  elements.imageInput.click();
+}
+
+function isFileDrag(event) {
+  const types = event.dataTransfer?.types;
+  return Boolean(types && Array.from(types).includes("Files"));
+}
+
 async function onImageSelected(event) {
   const [file] = event.target.files || [];
+  await handleSelectedFile(file);
+}
+
+async function handleSelectedFile(file) {
   clearStatus();
   clearError();
 
   if (!file) {
-    resetImageState();
-    renderPreview();
-    updateDownloadButtonState();
     return;
   }
 
@@ -217,7 +269,7 @@ async function downloadResult() {
   clearStatus();
 
   if (!state.imageBitmapOrImg || !state.file) {
-    setError("Choose an image first.");
+    setError("Choose or drop an image first.");
     return;
   }
 

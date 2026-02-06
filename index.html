@@ -16,12 +16,14 @@
                 </p>
             </header>
 
-            <section class="controls" aria-label="Watermark controls">
-                <div class="field">
-                    <label for="imageInput">Choose image</label>
-                    <input id="imageInput" type="file" accept="image/*" />
-                </div>
+            <input
+                id="imageInput"
+                class="visually-hidden"
+                type="file"
+                accept="image/*"
+            />
 
+            <section class="controls" aria-label="Watermark controls">
                 <div class="field">
                     <label for="watermarkInput">Watermark text</label>
                     <input
@@ -44,10 +46,16 @@
                 class="preview-card"
                 aria-label="Watermarked image preview"
             >
-                <div class="preview-shell" id="previewShell">
+                <div
+                    class="preview-shell"
+                    id="previewShell"
+                    role="button"
+                    tabindex="0"
+                    aria-label="Click to choose an image or drag and drop one here"
+                >
                     <canvas id="previewCanvas"></canvas>
                     <p id="previewHint">
-                        Choose an image to preview your watermark.
+                        Click to choose an image or drag and drop one here.
                     </p>
                 </div>
             </section>
