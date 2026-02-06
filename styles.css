@@ -320,6 +320,8 @@ button:disabled {
 
 .preview-shell.has-image {
     cursor: crosshair;
+    touch-action: none;
+    overscroll-behavior: contain;
 }
 
 .preview-shell:hover {
@@ -336,6 +338,7 @@ button:disabled {
     height: auto;
     display: none;
     border-radius: 8px;
+    touch-action: none;
 }
 
 #previewHint {
